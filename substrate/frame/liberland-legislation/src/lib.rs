@@ -41,7 +41,6 @@
 pub use pallet::*;
 
 mod benchmarking;
-pub mod migrations;
 mod mock;
 mod tests;
 pub mod types;

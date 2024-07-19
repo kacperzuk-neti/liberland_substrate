@@ -146,7 +146,6 @@ pub mod weights;
 pub use weights::WeightInfo;
 
 mod impl_fungible;
-pub mod migrations;
 
 /// Liberland Merit Pallet
 /*

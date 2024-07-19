@@ -107,7 +107,6 @@ pub use sp_runtime::BuildStorage;
 
 /// Implementations of some helper traits passed into runtime modules as associated types.
 pub mod impls;
-mod migrations;
 use impls::{
 	Author, ToAccountId,
 	IdentityCallFilter, RegistryCallFilter, NftsCallFilter, OnLLMPoliticsUnlock,
@@ -1919,9 +1918,7 @@ mod staking_v12 {
 
 // All migrations executed on runtime upgrade as a nested tuple of types implementing
 // `OnRuntimeUpgrade`.
-type Migrations = (
-	crate::migrations::add_senate_account_pallet::Migration<Runtime>,
-);
+type Migrations = ();
 
 type EventRecord = frame_system::EventRecord<
 	<Runtime as frame_system::Config>::RuntimeEvent,
