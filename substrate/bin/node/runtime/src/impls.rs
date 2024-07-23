@@ -179,6 +179,67 @@ impl InstanceFilter<RuntimeCall> for RegistryCallFilter {
 	Serialize,
 	Deserialize,
 )]
+pub enum MinistryOfFinanceCallFilter {
+	Tier1, // all balances, assets and llm transfers, + batch + llm.remark
+	Tier2, // llm.send_llm_to_politipool only, + batch + llm.remark
+}
+
+impl Default for MinistryOfFinanceCallFilter {
+	fn default() -> Self {
+		MinistryOfFinanceCallFilter::Tier2
+	}
+}
+
+impl MinistryOfFinanceCallFilter {
+	fn tier_filter(&self, c: &RuntimeCall) -> bool {
+		match self {
+			Self::Tier1 => matches!(c,
+				RuntimeCall::LLM(pallet_llm::Call::send_llm { .. }) |
+				RuntimeCall::LLM(pallet_llm::Call::send_llm_to_politipool { .. }) |
+				RuntimeCall::Assets(pallet_assets::Call::transfer { .. }) |
+				RuntimeCall::Assets(pallet_assets::Call::transfer_keep_alive { .. }) |
+				RuntimeCall::Balances(pallet_balances::Call::transfer { .. }) |
+				RuntimeCall::Balances(pallet_balances::Call::transfer_keep_alive { .. })
+			),
+			Self::Tier2 => matches!(c,
+				RuntimeCall::LLM(pallet_llm::Call::send_llm_to_politipool { .. })
+			),
+		}
+	}
+}
+
+impl InstanceFilter<RuntimeCall> for MinistryOfFinanceCallFilter {
+	fn filter(&self, c: &RuntimeCall) -> bool {
+		match c {
+			RuntimeCall::Utility(pallet_utility::Call::batch { calls }) => calls.iter().all(|call| self.filter(call)),
+			RuntimeCall::Utility(pallet_utility::Call::batch_all { calls }) => calls.iter().all(|call| self.filter(call)),
+			RuntimeCall::LLM(pallet_llm::Call::remark { .. }) => true,
+			_ => self.tier_filter(c),
+		}
+	}
+
+	fn is_superset(&self, o: &Self) -> bool {
+		match (self, o) {
+			(x, y) if x == y => true,
+			(MinistryOfFinanceCallFilter::Tier1, _) => true,
+			(_, MinistryOfFinanceCallFilter::Tier2) => false,
+			_ => false,
+		}
+	}
+}
+
+#[derive(
+	Clone,
+	Eq,
+	PartialEq,
+	Encode,
+	Decode,
+	RuntimeDebug,
+	MaxEncodedLen,
+	scale_info::TypeInfo,
+	Serialize,
+	Deserialize,
+)]
 pub enum NftsCallFilter {
 	Manager,
 	ManageItems,
@@ -938,6 +999,108 @@ mod council_filter_tests {
 
 			let call = RuntimeCall::Balances(pallet_balances::Call::transfer { dest: acc(), value: 1u8.into() });
 			assert!(!CouncilAccountCallFilter::contains(&call));
+		});
+	}
+}
+
+#[cfg(test)]
+mod ministry_of_finance_call_filter_tests {
+	use super::{MinistryOfFinanceCallFilter, RuntimeCall};
+	use frame_support::{PalletId, traits::InstanceFilter};
+	use sp_runtime::{traits::AccountIdConversion, AccountId32};
+
+
+	fn accid() -> AccountId32 {
+		PalletId(*b"12345678").into_account_truncating()
+	}
+
+	fn acc() -> sp_runtime::MultiAddress<AccountId32, ()> {
+		accid().into()
+	}
+
+	#[test]
+	fn allows_remark() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::LLM(pallet_llm::Call::remark { data: vec![].try_into().unwrap() });
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+			assert!(MinistryOfFinanceCallFilter::Tier2.filter(&call));
+		});
+	}
+
+	#[test]
+	fn allows_batch() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::LLM(pallet_llm::Call::remark { data: vec![].try_into().unwrap() });
+			let call = RuntimeCall::Utility(pallet_utility::Call::batch { calls: vec![call] }).into();
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+			assert!(MinistryOfFinanceCallFilter::Tier2.filter(&call));
+		});
+	}
+
+	#[test]
+	fn allows_batch_all() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::LLM(pallet_llm::Call::remark { data: vec![].try_into().unwrap() });
+			let call = RuntimeCall::Utility(pallet_utility::Call::batch_all { calls: vec![call] }).into();
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+			assert!(MinistryOfFinanceCallFilter::Tier2.filter(&call));
+		});
+	}
+
+	#[test]
+	fn allows_send_to_politipool() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::LLM(pallet_llm::Call::send_llm_to_politipool { to_account: accid(), amount: 1u8.into() });
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+			assert!(MinistryOfFinanceCallFilter::Tier2.filter(&call));
+		});
+	}
+
+	#[test]
+	fn allows_tier1_liquid_transfer_lld() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::Balances(pallet_balances::Call::transfer { dest: acc(), value: 1u8.into() });
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+		});
+	}
+
+	#[test]
+	fn allows_tier1_liquid_transfer_llm() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::LLM(pallet_llm::Call::send_llm { to_account: accid(), amount: 1u8.into() });
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+		});
+	}
+
+	#[test]
+	fn allows_tier1_liquid_transfer_assets() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::Assets(pallet_assets::Call::transfer { id: 1u32.into(), target: acc(), amount: 1u8.into() });
+			assert!(MinistryOfFinanceCallFilter::Tier1.filter(&call));
+		});
+	}
+
+	#[test]
+	fn disallows_tier2_liquid_transfer_lld() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::Balances(pallet_balances::Call::transfer { dest: acc(), value: 1u8.into() });
+			assert!(!MinistryOfFinanceCallFilter::Tier2.filter(&call));
+		});
+	}
+
+	#[test]
+	fn disallows_tier2_liquid_transfer_llm() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::LLM(pallet_llm::Call::send_llm { to_account: accid(), amount: 1u8.into() });
+			assert!(!MinistryOfFinanceCallFilter::Tier2.filter(&call));
+		});
+	}
+
+	#[test]
+	fn disallows_tier2_liquid_transfer_assets() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			let call = RuntimeCall::Assets(pallet_assets::Call::transfer { id: 1u32.into(), target: acc(), amount: 1u8.into() });
+			assert!(!MinistryOfFinanceCallFilter::Tier2.filter(&call));
 		});
 	}
 }
