@@ -75,7 +75,7 @@ jobs:
 
       - name: Check version
         id: version
-        run: cargo pkgid -p node-cli | cut -d'@' -f2 >> "$GITHUB_OUTPUT"
+        run: echo "version=v$(cargo pkgid -p node-cli | cut -d'@' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Mainnet Summary
         run: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Check version
         id: version
-        run: cargo pkgid -p node-cli | cut -d'@' -f2 >> "$GITHUB_OUTPUT"
+        run: echo "version=v$(cargo pkgid -p node-cli | cut -d'@' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Download binary
         uses: actions/download-artifact@v3
